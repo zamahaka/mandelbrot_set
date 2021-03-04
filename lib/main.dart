@@ -1,117 +1,221 @@
+import 'dart:math';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:mandelbrot_set/complex.dart';
 
 void main() {
   runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
         primarySwatch: Colors.blue,
-        // This makes the visual density adapt to the platform that you run
-        // the app on. For desktop platforms, the controls will be smaller and
-        // closer together (more dense) than on mobile platforms.
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: MyHomePage(title: 'Flutter Demo Home Page'),
+      home: Mandelbrot(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  MyHomePage({Key key, this.title}) : super(key: key);
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
+class Mandelbrot extends StatelessWidget {
   @override
-  _MyHomePageState createState() => _MyHomePageState();
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: MandelbrotPainter(
+        pixelRatio: MediaQuery.of(context).devicePixelRatio,
+      ),
+    );
+  }
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class Axis extends StatefulWidget {
+  @override
+  _AxisState createState() => _AxisState();
+}
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+class _AxisState extends State<Axis> with SingleTickerProviderStateMixin {
+  late final AnimationController controller;
+  double currentScale = 4;
+
+  @override
+  void initState() {
+    super.initState();
+
+    controller = AnimationController(
+      vsync: this,
+      lowerBound: 0.0,
+      upperBound: 1000.0,
+      value: currentScale,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+    return Container(
+      color: Colors.white,
+      child: GestureDetector(
+        onTap: animateUp,
+        onDoubleTap: animateDown,
+        onHorizontalDragUpdate: (details) {
+          currentScale += details.delta.distance * details.delta.dx.sign;
+          controller.value = currentScale;
+        },
+        child: AnimatedBuilder(
+            animation: controller,
+            builder: (context, child) {
+              return CustomPaint(painter: AxisPainter(scale: controller.value));
+            }),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Invoke "debug painting" (press "p" in the console, choose the
-          // "Toggle Debug Paint" action from the Flutter Inspector in Android
-          // Studio, or the "Toggle Debug Paint" command in Visual Studio Code)
-          // to see the wireframe for each widget.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headline4,
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
+
+  void animateDown() => controller.animateTo(
+        currentScale /= 2,
+        curve: Curves.easeInOut,
+        duration: Duration(milliseconds: 400),
+      );
+
+  void animateUp() => controller.animateTo(
+        currentScale *= 2,
+        curve: Curves.easeInOut,
+        duration: Duration(milliseconds: 400),
+      );
 }
+
+class AxisPainter extends CustomPainter {
+  /// Display 1 axis step (0 -> 1) in horizontal direction
+  final double scale;
+
+  final _paint = Paint()..color = Colors.black;
+
+  AxisPainter({
+    required this.scale,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final width = size.width;
+    final halfWidth = width / 2;
+
+    final height = size.height;
+    final halfHeight = height / 2;
+
+    canvas.save();
+    canvas.scale(1, -1);
+    canvas.translate(halfWidth, -halfHeight);
+
+    final pixelsPerStep = halfWidth / scale;
+
+    for (double x = pixelsPerStep; x < halfWidth; x += pixelsPerStep) {
+      canvas.drawLine(Offset(-x, 10), Offset(-x, -10), _paint);
+      canvas.drawLine(Offset(x, 10), Offset(x, -10), _paint);
+    }
+
+    for (double y = pixelsPerStep; y < halfHeight; y += pixelsPerStep) {
+      canvas.drawLine(Offset(-10, y), Offset(10, y), _paint);
+      canvas.drawLine(Offset(-10, -y), Offset(10, -y), _paint);
+    }
+
+    canvas.drawLine(Offset(-halfWidth, 0), Offset(halfWidth, 0), _paint);
+    canvas.drawLine(Offset(0, -halfHeight), Offset(0, halfHeight), _paint);
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant AxisPainter oldDelegate) => true;
+}
+
+int divergeCount(Complex complex, {int precision = 100}) {
+  Complex running = complex;
+  for (int step = 0; step < precision; step++) {
+    if (running.modulusSqr() > 4) return step;
+
+    running = running.sqr() + complex;
+  }
+
+  return precision;
+}
+
+class MandelbrotPoint {
+  final Offset offset;
+  final bool isDiverging;
+
+  const MandelbrotPoint({
+    required this.offset,
+    required this.isDiverging,
+  });
+}
+
+class MandelbrotPainter extends CustomPainter {
+  final double pixelRatio;
+
+  final Paint p = Paint()..strokeWidth = 1;
+
+  MandelbrotPainter({required this.pixelRatio});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    print(pixelRatio);
+
+    canvas.drawColor(Colors.black, BlendMode.src);
+
+    final width = size.width;
+    final halfWidth = width / 2;
+
+    final height = size.height;
+    final halfHeight = height / 2;
+
+    canvas.save();
+    canvas.scale(1, -1);
+    canvas.translate(halfWidth, -halfHeight);
+
+    for (double x = -halfWidth; x < halfWidth; x++) {
+      final real = map(x, -halfWidth, halfWidth, -2, 0.6);
+
+      for (double y = -halfHeight; y < halfHeight; y++) {
+        final imaginary = map(y, -halfHeight, halfHeight, -1.3, 1.3);
+
+        final precision = 200;
+        final divergesAt = divergeCount(
+          Complex(real: real, imaginary: imaginary),
+          precision: precision,
+        );
+
+        late final Color color;
+        if (divergesAt == precision) {
+          continue;
+
+          color = Colors.black;
+        } else {
+          final norm = divergesAt / precision;
+          final p = pow(norm, 0.4).toDouble();
+          final hue = map(p, 0, 1, 0, 360).clamp(0, 360).floorToDouble();
+
+          color = HSLColor.fromAHSL(1, hue, 1, 0.5).toColor();
+        }
+
+        canvas.drawPoints(PointMode.points, [Offset(x, y)], p..color = color);
+      }
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+double map(
+  double value,
+  double lowOrig,
+  double highOrig,
+  double lowNew,
+  double highNew,
+) =>
+    lowNew + (value - lowOrig) / (highOrig - lowOrig) * (highNew - lowNew);
